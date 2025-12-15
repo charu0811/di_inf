@@ -89,7 +89,6 @@ if uploaded_di and uploaded_inf:
             inf_col = inf_map[selected_year]
 
             # 1. Prepare Data
-            # Get the raw yield series
             series_di = di_df[di_col]
             series_inf = inf_df[inf_col]
 
@@ -102,63 +101,55 @@ if uploaded_di and uploaded_inf:
             min_date, max_date = roll_corr.index.min(), roll_corr.index.max()
             visible_events = events_df[(events_df['Date'] >= min_date) & (events_df['Date'] <= max_date)]
 
-            # 2. Create Subplots Grid
-            # Row 1: Dual Axis Yield Plot (Spans full width)
-            # Row 2: Correlation Plot (Left) + Event Table (Right)
+            # 2. Create Subplots Grid (3 Rows)
+            # Row 1: DI Yields
+            # Row 2: Inflation Yields
+            # Row 3: Correlation (Left) + Event Table (Right)
             fig = make_subplots(
-                rows=2, cols=2,
+                rows=3, cols=2,
                 column_widths=[0.7, 0.3],
-                vertical_spacing=0.15,
+                vertical_spacing=0.1,
                 specs=[
-                    [{"type": "xy", "colspan": 2, "secondary_y": True}, None], # Row 1
-                    [{"type": "xy"}, {"type": "table"}]                        # Row 2
+                    [{"type": "xy", "colspan": 2}, None],  # Row 1: DI (Full Width)
+                    [{"type": "xy", "colspan": 2}, None],  # Row 2: Inf (Full Width)
+                    [{"type": "xy"}, {"type": "table"}]    # Row 3: Corr | Table
                 ],
                 subplot_titles=(
-                    f"Yield Evolution: Maturity {selected_year} (Dual Axis)", 
+                    f"DI Nominal Yields (Maturity {selected_year})", 
+                    f"Inflation Real Yields (Maturity {selected_year})",
                     f"Rolling Correlation (Window: {window_size}d)", 
                     "Fiscal Events Log"
                 )
             )
 
-            # --- ROW 1: YIELD EVOLUTION (DUAL AXIS) ---
-            # Trace: DI Nominal (Left Axis)
+            # --- ROW 1: DI NOMINAL YIELDS ---
             fig.add_trace(go.Scatter(
                 x=series_di.index, y=series_di,
-                name=f"DI {di_col} (Nominal)",
+                name=f"DI {di_col}",
                 line=dict(color='blue', width=2)
-            ), row=1, col=1, secondary_y=False)
+            ), row=1, col=1)
 
-            # Trace: Inflation Real (Right Axis)
+            # --- ROW 2: INFLATION REAL YIELDS ---
             fig.add_trace(go.Scatter(
                 x=series_inf.index, y=series_inf,
-                name=f"Inf {inf_col} (Real)",
-                line=dict(color='orange', width=2, dash='solid')
-            ), row=1, col=1, secondary_y=True)
+                name=f"Inf {inf_col}",
+                line=dict(color='orange', width=2)
+            ), row=2, col=1)
 
-            # Add Vertical Lines for Events on Row 1 as well
-            for _, row in visible_events.iterrows():
-                color = 'red' if 'Rate' in row['Event'] else 'purple'
-                fig.add_shape(
-                    type="line", x0=row['Date'], x1=row['Date'], y0=0, y1=1,
-                    xref='x1', yref='paper', # Draw across whole plot height
-                    line=dict(color=color, width=1, dash="dot"),
-                    row=1, col=1
-                )
-
-            # --- ROW 2: ROLLING CORRELATION ---
+            # --- ROW 3: ROLLING CORRELATION ---
             fig.add_trace(go.Scatter(
                 x=roll_corr.index, y=roll_corr,
                 mode='lines', name='Correlation',
                 line=dict(color='#636EFA', width=2),
                 fill='tozeroy', fillcolor='rgba(99, 110, 250, 0.1)'
-            ), row=2, col=1)
+            ), row=3, col=1)
 
             # Reference Lines for Correlation
-            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0, y1=0, line=dict(color="black", width=1), row=2, col=1)
-            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0.8, y1=0.8, line=dict(color="red", dash="dot"), row=2, col=1)
-            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=-0.5, y1=-0.5, line=dict(color="green", dash="dot"), row=2, col=1)
+            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0, y1=0, line=dict(color="black", width=1), row=3, col=1)
+            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0.8, y1=0.8, line=dict(color="red", dash="dot"), row=3, col=1)
+            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=-0.5, y1=-0.5, line=dict(color="green", dash="dot"), row=3, col=1)
             
-            # --- ROW 2: DATA TABLE ---
+            # --- ROW 3: DATA TABLE ---
             fig.add_trace(go.Table(
                 header=dict(
                     values=["Date", "Event", "Actual", "Forecast"],
@@ -173,21 +164,36 @@ if uploaded_di and uploaded_inf:
                     ],
                     fill_color='lavender', align='left', height=25
                 )
-            ), row=2, col=2)
+            ), row=3, col=2)
+
+            # --- ADD VERTICAL EVENT LINES TO ALL PLOTS ---
+            # We loop through Rows 1, 2, and 3 (Col 1)
+            for row_idx in [1, 2, 3]:
+                for _, row in visible_events.iterrows():
+                    color = 'red' if 'Rate' in row['Event'] or 'Decision' in row['Event'] else 'purple'
+                    line_style = 'solid' if 'Rate' in row['Event'] else 'dot'
+                    
+                    # Add line
+                    fig.add_shape(
+                        type="line", x0=row['Date'], x1=row['Date'], y0=0, y1=1,
+                        xref=f'x{row_idx}', yref=f'paper', # Relative to subplot height
+                        line=dict(color=color, width=1, dash=line_style),
+                        row=row_idx, col=1
+                    )
 
             # --- LAYOUT UPDATE ---
             fig.update_layout(
-                height=900, # Increased height for 2 rows
+                height=1200, # Increased height for 3 rows
                 template="plotly_white",
                 showlegend=True,
-                hovermode="closest", # Safe mode for mixed subplots
+                hovermode="closest",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
 
             # Axis Titles
-            fig.update_yaxes(title_text="Nominal Yield (%)", color="blue", secondary_y=False, row=1, col=1)
-            fig.update_yaxes(title_text="Real Yield (%)", color="orange", secondary_y=True, row=1, col=1)
-            fig.update_yaxes(title_text="Correlation", range=[-1.1, 1.1], row=2, col=1)
+            fig.update_yaxes(title_text="Yield (%)", row=1, col=1)
+            fig.update_yaxes(title_text="Yield (%)", row=2, col=1)
+            fig.update_yaxes(title_text="Correlation", range=[-1.1, 1.1], row=3, col=1)
 
             st.plotly_chart(fig, use_container_width=True)
 
