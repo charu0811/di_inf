@@ -120,9 +120,15 @@ if uploaded_di and uploaded_inf:
                 fig.add_trace(go.Scatter(x=s_inf.index, y=s_inf, name="Inflation", line=dict(color='orange')), row=2, col=1)
                 fig.add_trace(go.Scatter(x=roll_corr.index, y=roll_corr, name="Corr", line=dict(color='purple'), fill='tozeroy'), row=3, col=1)
                 
+                # Table with FORECAST
                 fig.add_trace(go.Table(
-                    header=dict(values=["Date","Event","Actual"], fill_color='paleturquoise'),
-                    cells=dict(values=[vis_events['Date'].dt.date, vis_events['Event'], vis_events['Actual']], fill_color='lavender')
+                    header=dict(values=["Date", "Event", "Actual", "Forecast"], fill_color='paleturquoise'),
+                    cells=dict(values=[
+                        vis_events['Date'].dt.date, 
+                        vis_events['Event'], 
+                        vis_events['Actual'],
+                        vis_events['Forecast']
+                    ], fill_color='lavender')
                 ), row=3, col=2)
                 
                 # Event Lines
@@ -138,7 +144,7 @@ if uploaded_di and uploaded_inf:
                 st.plotly_chart(fig, use_container_width=True)
 
         # ==========================================
-        # MODE B: MULTI-SPREAD CORRELATION (NEW!)
+        # MODE B: MULTI-SPREAD CORRELATION
         # ==========================================
         elif mode == "Multi-Spread Correlation":
             st.sidebar.subheader("Build Spread X")
@@ -181,7 +187,7 @@ if uploaded_di and uploaded_inf:
                 specs=[
                     [{"colspan": 2}, None], # Row 1: Spread X
                     [{"colspan": 2}, None], # Row 2: Spread Y
-                    [{"type": "xy"}, {"type": "table"}] # Row 3: Correlation
+                    [{"type": "xy"}, {"type": "table"}] # Row 3: Correlation & Table
                 ],
                 subplot_titles=(f"Spread X: {name_x}", f"Spread Y: {name_y}", f"Correlation ({name_x} vs {name_y})", "Events")
             )
@@ -191,10 +197,15 @@ if uploaded_di and uploaded_inf:
             fig.add_trace(go.Scatter(x=spread_y.index, y=spread_y, name=name_y, line=dict(color='green')), row=2, col=1)
             fig.add_trace(go.Scatter(x=roll_corr.index, y=roll_corr, name="Correlation", line=dict(color='purple'), fill='tozeroy'), row=3, col=1)
 
-            # Table
+            # Table with FORECAST
             fig.add_trace(go.Table(
-                header=dict(values=["Date", "Event", "Actual"], fill_color='paleturquoise'),
-                cells=dict(values=[vis_events['Date'].dt.date, vis_events['Event'], vis_events['Actual']], fill_color='lavender')
+                header=dict(values=["Date", "Event", "Actual", "Forecast"], fill_color='paleturquoise'),
+                cells=dict(values=[
+                    vis_events['Date'].dt.date, 
+                    vis_events['Event'], 
+                    vis_events['Actual'],
+                    vis_events['Forecast']
+                ], fill_color='lavender')
             ), row=3, col=2)
 
             # Event Lines
