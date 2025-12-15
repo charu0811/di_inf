@@ -101,34 +101,45 @@ if uploaded_di and uploaded_inf:
             # 1. Prepare Data
             series_di = di_df[di_col]
             series_inf = inf_df[inf_col]
+            
+            # --- NEW: CALCULATE SPREAD (Inf - DI) ---
+            # "Price of Spread A-B is Price of B - Price of A"
+            # Here: B=Inflation, A=DI
+            series_spread = series_inf - series_di
 
             # Calculate Rolling Correlation
             di_chg = series_di.diff()
             inf_chg = series_inf.diff()
             roll_corr = di_chg.rolling(window=window_size).corr(inf_chg)
 
-            # Filter Events
+            # Filter Events for Visible Range
             min_date, max_date = roll_corr.index.min(), roll_corr.index.max()
             visible_events = events_df[(events_df['Date'] >= min_date) & (events_df['Date'] <= max_date)]
 
             # 2. Dynamic Axis Ranges
-            # We calculate Min/Max specifically for the selected series + a small buffer (e.g. 0.2%)
             di_min, di_max = series_di.min() - 0.2, series_di.max() + 0.2
             inf_min, inf_max = series_inf.min() - 0.2, series_inf.max() + 0.2
+            spr_min, spr_max = series_spread.min() - 0.2, series_spread.max() + 0.2
 
-            # 3. Create Subplots Grid (3 Rows)
+            # 3. Create Subplots Grid (4 Rows)
+            # Row 1: DI
+            # Row 2: Inflation
+            # Row 3: Spread (New)
+            # Row 4: Correlation | Table
             fig = make_subplots(
-                rows=3, cols=2,
+                rows=4, cols=2,
                 column_widths=[0.7, 0.3],
-                vertical_spacing=0.1,
+                vertical_spacing=0.08,
                 specs=[
-                    [{"type": "xy", "colspan": 2}, None],  # Row 1: DI
-                    [{"type": "xy", "colspan": 2}, None],  # Row 2: Inflation
-                    [{"type": "xy"}, {"type": "table"}]    # Row 3: Corr | Table
+                    [{"type": "xy", "colspan": 2}, None],  # Row 1
+                    [{"type": "xy", "colspan": 2}, None],  # Row 2
+                    [{"type": "xy", "colspan": 2}, None],  # Row 3 (Spread)
+                    [{"type": "xy"}, {"type": "table"}]    # Row 4
                 ],
                 subplot_titles=(
                     f"DI Nominal Yields (Maturity {selected_year})", 
                     f"Inflation Real Yields (Maturity {selected_year})",
+                    f"Spread (Inflation - DI) (Maturity {selected_year})",
                     f"Rolling Correlation (Window: {window_size}d)", 
                     "Fiscal Events Log"
                 )
@@ -148,20 +159,28 @@ if uploaded_di and uploaded_inf:
                 line=dict(color='orange', width=2)
             ), row=2, col=1)
 
-            # --- ROW 3: ROLLING CORRELATION ---
+            # --- ROW 3: SPREAD (Inf - DI) ---
+            fig.add_trace(go.Scatter(
+                x=series_spread.index, y=series_spread,
+                name=f"Spread (Inf - DI)",
+                line=dict(color='green', width=2),
+                fill='tozeroy', fillcolor='rgba(0, 128, 0, 0.1)'
+            ), row=3, col=1)
+
+            # --- ROW 4: ROLLING CORRELATION ---
             fig.add_trace(go.Scatter(
                 x=roll_corr.index, y=roll_corr,
                 mode='lines', name='Correlation',
                 line=dict(color='#636EFA', width=2),
                 fill='tozeroy', fillcolor='rgba(99, 110, 250, 0.1)'
-            ), row=3, col=1)
+            ), row=4, col=1)
 
             # Reference Lines for Correlation
-            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0, y1=0, line=dict(color="black", width=1), row=3, col=1)
-            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0.8, y1=0.8, line=dict(color="red", dash="dot"), row=3, col=1)
-            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=-0.5, y1=-0.5, line=dict(color="green", dash="dot"), row=3, col=1)
+            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0, y1=0, line=dict(color="black", width=1), row=4, col=1)
+            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=0.8, y1=0.8, line=dict(color="red", dash="dot"), row=4, col=1)
+            fig.add_shape(type="line", x0=min_date, x1=max_date, y0=-0.5, y1=-0.5, line=dict(color="green", dash="dot"), row=4, col=1)
             
-            # --- ROW 3: DATA TABLE ---
+            # --- ROW 4: DATA TABLE ---
             fig.add_trace(go.Table(
                 header=dict(
                     values=["Date", "Event", "Actual", "Forecast"],
@@ -176,10 +195,10 @@ if uploaded_di and uploaded_inf:
                     ],
                     fill_color='lavender', align='left', height=25
                 )
-            ), row=3, col=2)
+            ), row=4, col=2)
 
-            # --- ADD VERTICAL EVENT LINES ---
-            for row_idx in [1, 2, 3]:
+            # --- ADD VERTICAL EVENT LINES TO PLOTS 1, 2, 3 ---
+            for row_idx in [1, 2, 3, 4]:
                 for _, row in visible_events.iterrows():
                     color = 'red' if 'Rate' in row['Event'] or 'Decision' in row['Event'] else 'purple'
                     line_style = 'solid' if 'Rate' in row['Event'] else 'dot'
@@ -193,22 +212,18 @@ if uploaded_di and uploaded_inf:
 
             # --- LAYOUT UPDATE ---
             fig.update_layout(
-                height=1200, 
+                height=1400, # Increased height for 4 rows
                 template="plotly_white",
                 showlegend=True,
                 hovermode="closest",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
 
-            # Axis Titles & RANGES (Dynamic)
-            # Row 1: DI (Set Range specifically for this maturity)
+            # Axis Titles & RANGES
             fig.update_yaxes(title_text="Yield (%)", range=[di_min, di_max], row=1, col=1)
-            
-            # Row 2: Inflation (Set Range specifically for this maturity)
             fig.update_yaxes(title_text="Yield (%)", range=[inf_min, inf_max], row=2, col=1)
-            
-            # Row 3: Correlation (Fixed -1 to 1)
-            fig.update_yaxes(title_text="Correlation", range=[-1.1, 1.1], row=3, col=1)
+            fig.update_yaxes(title_text="Spread (%)", range=[spr_min, spr_max], row=3, col=1)
+            fig.update_yaxes(title_text="Correlation", range=[-1.1, 1.1], row=4, col=1)
 
             st.plotly_chart(fig, use_container_width=True)
 
