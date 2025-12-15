@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 # 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(page_title="Fiscal Correlation Dashboard", layout="wide")
-st.title("📊 Systemic Correlation & Curve Analyzer")
+st.title("📊 Systemic Correlation & Multi-Spread Analyzer")
 
 # ==========================================
 # 2. HARDCODED FISCAL EVENTS
@@ -85,23 +85,22 @@ if uploaded_di and uploaded_inf:
         
         # --- MODE SELECTOR ---
         mode = st.sidebar.radio("Select Analysis Type:", 
-                                ["Macro (DI vs Inflation)", "Curve Spreads (Intra-Curve)"])
+                                ["Macro (DI vs Inflation)", 
+                                 "Multi-Spread Correlation"])
 
         # ==========================================
-        # MODE A: MACRO (DI vs INF) - The Original View
+        # MODE A: MACRO (DI vs INF) - Classic View
         # ==========================================
         if mode == "Macro (DI vs Inflation)":
             selected_year = st.sidebar.selectbox("Select Maturity Year", years)
             window_size = st.sidebar.slider("Rolling Window (Days)", 10, 120, 60, 5)
             
             if selected_year:
-                # [Previous Logic for DI vs Inf]
                 di_col = di_map[selected_year]
                 inf_col = inf_map[selected_year]
                 
                 s_di = di_df[di_col]
                 s_inf = inf_df[inf_col]
-                s_spread = s_inf - s_di # Spread Calculation
                 
                 # Correlation
                 roll_corr = s_di.diff().rolling(window_size).corr(s_inf.diff())
@@ -110,131 +109,107 @@ if uploaded_di and uploaded_inf:
                 min_d, max_d = roll_corr.index.min(), roll_corr.index.max()
                 vis_events = events_df[(events_df['Date'] >= min_d) & (events_df['Date'] <= max_d)]
                 
-                # Axis Ranges
-                di_range = [s_di.min()-0.2, s_di.max()+0.2]
-                inf_range = [s_inf.min()-0.2, s_inf.max()+0.2]
-                spr_range = [s_spread.min()-0.2, s_spread.max()+0.2]
-
                 # Plotting
                 fig = make_subplots(
-                    rows=4, cols=2, column_widths=[0.7, 0.3], vertical_spacing=0.08,
-                    specs=[[{"colspan":2},None], [{"colspan":2},None], [{"colspan":2},None], [{"type":"xy"}, {"type":"table"}]],
-                    subplot_titles=(f"DI {di_col}", f"Inflation {inf_col}", "Spread (Inf - DI)", "Rolling Correlation", "Events")
+                    rows=3, cols=2, column_widths=[0.7, 0.3], vertical_spacing=0.1,
+                    specs=[[{"colspan":2},None], [{"colspan":2},None], [{"type":"xy"}, {"type":"table"}]],
+                    subplot_titles=(f"DI Nominal ({di_col})", f"Inflation Real ({inf_col})", f"Correlation (Rolling {window_size}d)", "Events")
                 )
                 
-                # Traces
                 fig.add_trace(go.Scatter(x=s_di.index, y=s_di, name="DI", line=dict(color='blue')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=s_inf.index, y=s_inf, name="Inflation", line=dict(color='orange')), row=2, col=1)
-                fig.add_trace(go.Scatter(x=s_spread.index, y=s_spread, name="Spread", line=dict(color='green')), row=3, col=1)
-                fig.add_trace(go.Scatter(x=roll_corr.index, y=roll_corr, name="Corr", line=dict(color='purple'), fill='tozeroy'), row=4, col=1)
+                fig.add_trace(go.Scatter(x=roll_corr.index, y=roll_corr, name="Corr", line=dict(color='purple'), fill='tozeroy'), row=3, col=1)
                 
-                # Table
                 fig.add_trace(go.Table(
                     header=dict(values=["Date","Event","Actual"], fill_color='paleturquoise'),
                     cells=dict(values=[vis_events['Date'].dt.date, vis_events['Event'], vis_events['Actual']], fill_color='lavender')
-                ), row=4, col=2)
+                ), row=3, col=2)
                 
-                # Add Vertical Lines
-                for idx in [1, 2, 3, 4]:
+                # Event Lines
+                for idx in [1, 2, 3]:
                     for _, r in vis_events.iterrows():
                         c = 'red' if 'Rate' in r['Event'] else 'purple'
                         fig.add_shape(type="line", x0=r['Date'], x1=r['Date'], y0=0, y1=1, xref=f'x{idx}', yref='paper', line=dict(color=c, dash='dot'), row=idx, col=1)
 
-                fig.update_layout(height=1400, showlegend=True, hovermode="closest", template="plotly_white")
-                fig.update_yaxes(range=di_range, row=1, col=1)
-                fig.update_yaxes(range=inf_range, row=2, col=1)
-                fig.update_yaxes(range=spr_range, row=3, col=1)
-                fig.update_yaxes(range=[-1.1, 1.1], row=4, col=1)
-                
-                st.plotly_chart(fig, use_container_width=True)
-
-        # ==========================================
-        # MODE B: CURVE SPREADS (INTRA-CURVE) - New!
-        # ==========================================
-        elif mode == "Curve Spreads (Intra-Curve)":
-            st.sidebar.subheader("Build Your Spread")
-            
-            # 1. Select Asset Class
-            curve_type = st.sidebar.radio("Select Curve:", ["DI (Nominal)", "Inflation (Real)"])
-            
-            # 2. Select Contracts (A - B)
-            col1, col2 = st.sidebar.columns(2)
-            mat_a = col1.selectbox("Contract A (Long)", years, index=len(years)-1) # Default to Longest
-            mat_b = col2.selectbox("Contract B (Short)", years, index=0)           # Default to Shortest
-            
-            if mat_a and mat_b:
-                # Prepare Data
-                if curve_type == "DI (Nominal)":
-                    col_a, col_b = di_map[mat_a], di_map[mat_b]
-                    df_target = di_df
-                    color_line = 'blue'
-                else:
-                    col_a, col_b = inf_map[mat_a], inf_map[mat_b]
-                    df_target = inf_df
-                    color_line = 'orange'
-                
-                series_a = df_target[col_a]
-                series_b = df_target[col_b]
-                
-                # Calculate Spread (A - B)
-                curve_spread = series_a - series_b
-                
-                # Filter Events
-                min_d, max_d = curve_spread.index.min(), curve_spread.index.max()
-                vis_events = events_df[(events_df['Date'] >= min_d) & (events_df['Date'] <= max_d)]
-                
-                # Dynamic Ranges
-                yield_min = min(series_a.min(), series_b.min()) - 0.2
-                yield_max = max(series_a.max(), series_b.max()) + 0.2
-                spr_min, spr_max = curve_spread.min() - 0.2, curve_spread.max() + 0.2
-
-                # PLOTTING
-                fig = make_subplots(
-                    rows=3, cols=2, 
-                    column_widths=[0.7, 0.3], vertical_spacing=0.1,
-                    specs=[
-                        [{"colspan": 2}, None], # Row 1: Raw Yields
-                        [{"colspan": 2}, None], # Row 2: Spread
-                        [None, {"type": "table", "rowspan": 1}] # Row 3: Just Table (or empty left)
-                    ],
-                    subplot_titles=(
-                        f"{curve_type} Yields: {col_a} vs {col_b}", 
-                        f"Curve Spread: {col_a} - {col_b} (Steepener/Flattener)",
-                        "Fiscal Events Log"
-                    )
-                )
-                
-                # Row 1: Raw Yields (Comparison)
-                fig.add_trace(go.Scatter(x=series_a.index, y=series_a, name=f"{col_a}", line=dict(color=color_line, width=2)), row=1, col=1)
-                fig.add_trace(go.Scatter(x=series_b.index, y=series_b, name=f"{col_b}", line=dict(color='gray', width=2, dash='dot')), row=1, col=1)
-                
-                # Row 2: The Spread
-                fig.add_trace(go.Scatter(
-                    x=curve_spread.index, y=curve_spread, 
-                    name=f"Spread ({col_a}-{col_b})", 
-                    line=dict(color='green', width=2),
-                    fill='tozeroy', fillcolor='rgba(0, 128, 0, 0.1)'
-                ), row=2, col=1)
-                
-                # Row 3: Table (Right side, Left side empty for spacing)
-                fig.add_trace(go.Table(
-                    header=dict(values=["Date", "Event", "Actual"], fill_color='paleturquoise'),
-                    cells=dict(values=[vis_events['Date'].dt.date, vis_events['Event'], vis_events['Actual']], fill_color='lavender')
-                ), row=3, col=2)
-
-                # Add Vertical Lines (Rows 1 & 2)
-                for idx in [1, 2]:
-                    for _, r in vis_events.iterrows():
-                        c = 'red' if 'Rate' in r['Event'] else 'purple'
-                        fig.add_shape(type="line", x0=r['Date'], x1=r['Date'], y0=0, y1=1, xref=f'x{idx}', yref='paper', line=dict(color=c, dash='dot', width=1), row=idx, col=1)
-
                 fig.update_layout(height=1000, template="plotly_white", hovermode="closest", showlegend=True)
-                
-                # Axis Updates
-                fig.update_yaxes(title_text="Yield (%)", range=[yield_min, yield_max], row=1, col=1)
-                fig.update_yaxes(title_text="Spread (bps/%)", range=[spr_min, spr_max], row=2, col=1)
-                
+                fig.update_yaxes(title="Yield %", row=1, col=1)
+                fig.update_yaxes(title="Yield %", row=2, col=1)
+                fig.update_yaxes(range=[-1.1, 1.1], row=3, col=1)
                 st.plotly_chart(fig, use_container_width=True)
+
+        # ==========================================
+        # MODE B: MULTI-SPREAD CORRELATION (NEW!)
+        # ==========================================
+        elif mode == "Multi-Spread Correlation":
+            st.sidebar.subheader("Build Spread X")
+            col1, col2, col3 = st.sidebar.columns(3)
+            asset_x = col1.selectbox("Asset X", ["DI (Nominal)", "Inflation (Real)"], key='ax')
+            mat_x_long = col2.selectbox("Long", years, index=len(years)-1, key='xl')
+            mat_x_short = col3.selectbox("Short", years, index=0, key='xs')
+
+            st.sidebar.subheader("Build Spread Y")
+            col4, col5, col6 = st.sidebar.columns(3)
+            asset_y = col4.selectbox("Asset Y", ["DI (Nominal)", "Inflation (Real)"], index=1, key='ay')
+            mat_y_long = col5.selectbox("Long", years, index=len(years)-1, key='yl')
+            mat_y_short = col6.selectbox("Short", years, index=0, key='ys')
+            
+            window_size = st.sidebar.slider("Rolling Window", 10, 120, 60)
+
+            # Calculation
+            # Spread X
+            df_x = di_df if "DI" in asset_x else inf_df
+            map_x = di_map if "DI" in asset_x else inf_map
+            spread_x = df_x[map_x[mat_x_long]] - df_x[map_x[mat_x_short]]
+            name_x = f"{asset_x.split()[0]} {mat_x_long}s/{mat_x_short}s"
+
+            # Spread Y
+            df_y = di_df if "DI" in asset_y else inf_df
+            map_y = di_map if "DI" in asset_y else inf_map
+            spread_y = df_y[map_y[mat_y_long]] - df_y[map_y[mat_y_short]]
+            name_y = f"{asset_y.split()[0]} {mat_y_long}s/{mat_y_short}s"
+
+            # Correlation of Spread Changes
+            roll_corr = spread_x.diff().rolling(window_size).corr(spread_y.diff())
+
+            # Events
+            min_d, max_d = roll_corr.index.min(), roll_corr.index.max()
+            vis_events = events_df[(events_df['Date'] >= min_d) & (events_df['Date'] <= max_d)]
+
+            # Plotting
+            fig = make_subplots(
+                rows=3, cols=2, column_widths=[0.7, 0.3], vertical_spacing=0.1,
+                specs=[
+                    [{"colspan": 2}, None], # Row 1: Spread X
+                    [{"colspan": 2}, None], # Row 2: Spread Y
+                    [{"type": "xy"}, {"type": "table"}] # Row 3: Correlation
+                ],
+                subplot_titles=(f"Spread X: {name_x}", f"Spread Y: {name_y}", f"Correlation ({name_x} vs {name_y})", "Events")
+            )
+
+            # Traces
+            fig.add_trace(go.Scatter(x=spread_x.index, y=spread_x, name=name_x, line=dict(color='blue')), row=1, col=1)
+            fig.add_trace(go.Scatter(x=spread_y.index, y=spread_y, name=name_y, line=dict(color='green')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=roll_corr.index, y=roll_corr, name="Correlation", line=dict(color='purple'), fill='tozeroy'), row=3, col=1)
+
+            # Table
+            fig.add_trace(go.Table(
+                header=dict(values=["Date", "Event", "Actual"], fill_color='paleturquoise'),
+                cells=dict(values=[vis_events['Date'].dt.date, vis_events['Event'], vis_events['Actual']], fill_color='lavender')
+            ), row=3, col=2)
+
+            # Event Lines
+            for idx in [1, 2, 3]:
+                for _, r in vis_events.iterrows():
+                    c = 'red' if 'Rate' in r['Event'] else 'purple'
+                    fig.add_shape(type="line", x0=r['Date'], x1=r['Date'], y0=0, y1=1, xref=f'x{idx}', yref='paper', line=dict(color=c, dash='dot'), row=idx, col=1)
+
+            # Dynamic Ranges
+            fig.update_yaxes(range=[spread_x.min()-0.1, spread_x.max()+0.1], title="Spread %", row=1, col=1)
+            fig.update_yaxes(range=[spread_y.min()-0.1, spread_y.max()+0.1], title="Spread %", row=2, col=1)
+            fig.update_yaxes(range=[-1.1, 1.1], title="Correlation", row=3, col=1)
+
+            fig.update_layout(height=1200, template="plotly_white", hovermode="closest", showlegend=True)
+            st.plotly_chart(fig, use_container_width=True)
 
 else:
     st.info("👋 Please upload both DI and Inflation Excel files in the sidebar.")
