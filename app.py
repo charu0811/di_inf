@@ -42,12 +42,12 @@ events_df = pd.DataFrame(fiscal_events_data)
 events_df['Date'] = pd.to_datetime(events_df['Date'])
 
 # ==========================================
-# 3. DATA LOADING FUNCTION (Updated for CSV)
+# 3. DATA LOADING FUNCTION
 # ==========================================
 @st.cache_data
 def load_data(di_file, inf_file):
     try:
-        # Check file extension to determine loader
+        # Load CSV or Excel
         if di_file.name.endswith('.csv'):
             di_df = pd.read_csv(di_file)
         else:
@@ -59,7 +59,6 @@ def load_data(di_file, inf_file):
             inf_df = pd.read_excel(inf_file)
         
         # Clean Dates & Set Index
-        # Looking for 'Timestamp' or 'Unnamed: 0' or 'Date'
         for df in [di_df, inf_df]:
             date_col = None
             for col in ['Timestamp', 'Date', 'Unnamed: 0']:
@@ -70,7 +69,7 @@ def load_data(di_file, inf_file):
             if date_col:
                 df[date_col] = pd.to_datetime(df[date_col])
                 df.set_index(date_col, inplace=True)
-                df.index.name = 'Date' # Standardize index name
+                df.index.name = 'Date'
             
             df.sort_index(inplace=True)
             
@@ -115,7 +114,9 @@ if uploaded_di and uploaded_inf:
         # ==========================================
         if mode == "Macro (DI vs Inflation)":
             selected_year = st.sidebar.selectbox("Select Maturity Year", years)
-            window_size = st.sidebar.slider("Rolling Window (Days)", 10, 120, 60, 5)
+            
+            # --- UPDATED: Rolling Window defaulted to 3 Days ---
+            window_size = st.sidebar.slider("Rolling Window (Days)", min_value=3, max_value=60, value=3, step=1)
             
             if selected_year:
                 di_col = di_map[selected_year]
@@ -181,7 +182,8 @@ if uploaded_di and uploaded_inf:
             mat_y_long = col5.selectbox("Long", years, index=len(years)-1, key='yl')
             mat_y_short = col6.selectbox("Short", years, index=0, key='ys')
             
-            window_size = st.sidebar.slider("Rolling Window", 10, 120, 60)
+            # --- UPDATED: Rolling Window defaulted to 3 Days ---
+            window_size = st.sidebar.slider("Rolling Window", min_value=3, max_value=60, value=3, step=1)
 
             # Calculation
             # Spread X
@@ -225,7 +227,7 @@ if uploaded_di and uploaded_inf:
                 cells=dict(values=[
                     vis_events['Date'].dt.date, 
                     vis_events['Event'], 
-                    vis_events['Actual'],
+                    vis_events['Actual'], 
                     vis_events['Forecast']
                 ], fill_color='lavender')
             ), row=3, col=2)
@@ -245,4 +247,4 @@ if uploaded_di and uploaded_inf:
             st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.info("👋 Please upload both DI and Inflation CSV/Excel files in the sidebar.")
+    st.info("👋 Please upload both DI and Inflation Excel/CSV files in the sidebar.")
