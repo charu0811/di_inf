@@ -10,7 +10,7 @@ st.set_page_config(page_title="Fiscal Correlation Dashboard", layout="wide")
 st.title("📊 Systemic Correlation & Multi-Spread Analyzer")
 
 # ==========================================
-# 2. HARDCODED FISCAL EVENTS
+# 2. HARDCODED FISCAL EVENTS (2025 Calendar)
 # ==========================================
 fiscal_events_data = [
     {"Date": "2025-01-10", "Event": "CPI (Dec)", "Actual": "4.83%", "Forecast": "4.87%"},
@@ -42,22 +42,44 @@ events_df = pd.DataFrame(fiscal_events_data)
 events_df['Date'] = pd.to_datetime(events_df['Date'])
 
 # ==========================================
-# 3. DATA LOADING
+# 3. DATA LOADING FUNCTION (Updated for CSV)
 # ==========================================
 @st.cache_data
 def load_data(di_file, inf_file):
     try:
-        di_df = pd.read_excel(di_file, index_col=0)
-        inf_df = pd.read_excel(inf_file, index_col=0)
+        # Check file extension to determine loader
+        if di_file.name.endswith('.csv'):
+            di_df = pd.read_csv(di_file)
+        else:
+            di_df = pd.read_excel(di_file)
+            
+        if inf_file.name.endswith('.csv'):
+            inf_df = pd.read_csv(inf_file)
+        else:
+            inf_df = pd.read_excel(inf_file)
         
+        # Clean Dates & Set Index
+        # Looking for 'Timestamp' or 'Unnamed: 0' or 'Date'
         for df in [di_df, inf_df]:
-            df.index = pd.to_datetime(df.index)
+            date_col = None
+            for col in ['Timestamp', 'Date', 'Unnamed: 0']:
+                if col in df.columns:
+                    date_col = col
+                    break
+            
+            if date_col:
+                df[date_col] = pd.to_datetime(df[date_col])
+                df.set_index(date_col, inplace=True)
+                df.index.name = 'Date' # Standardize index name
+            
             df.sort_index(inplace=True)
             
+        # Align Data
         common_idx = di_df.index.intersection(inf_df.index)
         return di_df.loc[common_idx], inf_df.loc[common_idx]
+
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error loading files: {e}")
         return None, None
 
 def get_year(col):
@@ -68,8 +90,8 @@ def get_year(col):
 # 4. SIDEBAR CONFIG
 # ==========================================
 st.sidebar.header("📁 Data Input")
-uploaded_di = st.sidebar.file_uploader("Upload DI Data (.xlsx)", type=['xlsx'])
-uploaded_inf = st.sidebar.file_uploader("Upload Inflation Data (.xlsx)", type=['xlsx'])
+uploaded_di = st.sidebar.file_uploader("Upload DI Data (CSV/Excel)", type=['xlsx', 'csv'])
+uploaded_inf = st.sidebar.file_uploader("Upload Inflation Data (CSV/Excel)", type=['xlsx', 'csv'])
 
 if uploaded_di and uploaded_inf:
     di_df, inf_df = load_data(uploaded_di, uploaded_inf)
@@ -89,7 +111,7 @@ if uploaded_di and uploaded_inf:
                                  "Multi-Spread Correlation"])
 
         # ==========================================
-        # MODE A: MACRO (DI vs INF) - Classic View
+        # MODE A: MACRO (DI vs INF)
         # ==========================================
         if mode == "Macro (DI vs Inflation)":
             selected_year = st.sidebar.selectbox("Select Maturity Year", years)
@@ -223,4 +245,4 @@ if uploaded_di and uploaded_inf:
             st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.info("👋 Please upload both DI and Inflation Excel files in the sidebar.")
+    st.info("👋 Please upload both DI and Inflation CSV/Excel files in the sidebar.")
